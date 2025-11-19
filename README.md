@@ -1,4 +1,3 @@
-# Tyre-Pressure-Calculator
 <!DOCTYPE html>
 <html lang="en">
 <head>
