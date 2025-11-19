@@ -1,2 +1,575 @@
 # Tyre-Pressure-Calculator
-""" Fuel Consumption Calculator v1.0 RGB Racing UMA Race Fuel Strategy & Consumption Analysis FEATURES: - Session duration and laptime configuration - Mandatory fuel calculations - Flying lap average consumption - Fuel needed with safety margins (+5%, +10%) - Results in both Litres and Kilograms - Fuel density conversion (0.755 kg/L) - Clean, professional interface Based on RGB Racing UMA fuel consumption procedures """ from PyQt5.QtWidgets import ( QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QTextEdit, QGroupBox, QGridLayout, QDoubleSpinBox, QSpinBox, QTableWidget, QTableWidgetItem, QMessageBox, QSplitter ) from PyQt5.QtCore import Qt from PyQt5.QtGui import QFont, QColor import sys import numpy as np from datetime import datetime class FuelCalculator(QMainWindow): """Main application window for Fuel Consumption Calculator v1.0""" def __init__(self): super().__init__() # Fuel density constant self.FUEL_DENSITY = 0.755 # kg per litre self.init_ui() def init_ui(self): """Initialize the user interface""" self.setWindowTitle('Fuel Consumption Calculator v1.0 - RGB Racing UMA') self.setGeometry(100, 100, 1200, 800) central_widget = QWidget() self.setCentralWidget(central_widget) main_layout = QVBoxLayout() # Title title = QLabel('FUEL CONSUMPTION') title_font = QFont('Arial', 24, QFont.Bold) title.setFont(title_font) title.setAlignment(Qt.AlignCenter) title.setStyleSheet('background-color: black; color: white; padding: 15px;') main_layout.addWidget(title) # Main content area content_layout = QHBoxLayout() # Left side - Inputs inputs_widget = self.create_inputs_section() content_layout.addWidget(inputs_widget, 1) # Right side - Results results_widget = self.create_results_section() content_layout.addWidget(results_widget, 2) main_layout.addLayout(content_layout) self.statusBar().showMessage('Ready - Fuel Consumption Calculator v1.0') central_widget.setLayout(main_layout) def create_inputs_section(self): """Create the inputs section""" widget = QWidget() layout = QVBoxLayout() # Session Parameters session_group = QGroupBox('Inputs') session_layout = QGridLayout() # Session Duration session_layout.addWidget(QLabel('Session Duration'), 0, 0) self.session_duration = QSpinBox() self.session_duration.setRange(1, 300) self.session_duration.setValue(50) self.session_duration.setSuffix(' min') session_layout.addWidget(self.session_duration, 0, 1) # Average Laptime session_layout.addWidget(QLabel('Average Laptime'), 1, 0) self.avg_laptime = QDoubleSpinBox() self.avg_laptime.setRange(30.0, 300.0) self.avg_laptime.setValue(117.0) self.avg_laptime.setSingleStep(0.1) self.avg_laptime.setDecimals(1) self.avg_laptime.setSuffix(' s') session_layout.addWidget(self.avg_laptime, 1, 1) # Added Laps (OUT/IN) session_layout.addWidget(QLabel('Added Laps (OUT/IN)'), 2, 0) self.added_laps = QSpinBox() self.added_laps.setRange(0, 20) self.added_laps.setValue(4) session_layout.addWidget(self.added_laps, 2, 1) # Mandatory Fuel session_layout.addWidget(QLabel('Mandatory Fuel (kg)'), 3, 0) self.mandatory_fuel = QDoubleSpinBox() self.mandatory_fuel.setRange(0.0, 50.0) self.mandatory_fuel.setValue(3.0) self.mandatory_fuel.setSingleStep(0.1) self.mandatory_fuel.setDecimals(1) self.mandatory_fuel.setSuffix(' kg') session_layout.addWidget(self.mandatory_fuel, 3, 1) # Warm Up session_layout.addWidget(QLabel('Warm Up (kg)'), 4, 0) self.warm_up = QDoubleSpinBox() self.warm_up.setRange(0.0, 10.0) self.warm_up.setValue(1.0) self.warm_up.setSingleStep(0.1) self.warm_up.setDecimals(1) self.warm_up.setSuffix(' kg') session_layout.addWidget(self.warm_up, 4, 1) # Margin session_layout.addWidget(QLabel('Red/Yellow Flag Reserve (kg)'), 5, 0) self.red_yellow_reserve = QDoubleSpinBox() self.red_yellow_reserve.setRange(0.0, 20.0) self.red_yellow_reserve.setValue(5.0) self.red_yellow_reserve.setSingleStep(0.5) self.red_yellow_reserve.setDecimals(1) self.red_yellow_reserve.setSuffix(' kg') session_layout.addWidget(self.red_yellow_reserve, 5, 1) session_group.setLayout(session_layout) layout.addWidget(session_group) # Consumption Data consumption_group = QGroupBox('RESULTS >') consumption_layout = QGridLayout() # Laps consumption_layout.addWidget(QLabel('Laps'), 0, 0) self.laps_input = QSpinBox() self.laps_input.setRange(1, 500) self.laps_input.setValue(26) consumption_layout.addWidget(self.laps_input, 0, 1) # Fuel consumed consumption_layout.addWidget(QLabel('Fuel cons (L)'), 1, 0) self.fuel_cons_input = QDoubleSpinBox() self.fuel_cons_input.setRange(0.0, 500.0) self.fuel_cons_input.setValue(52.82) self.fuel_cons_input.setSingleStep(0.01) self.fuel_cons_input.setDecimals(2) self.fuel_cons_input.setSuffix(' L') consumption_layout.addWidget(self.fuel_cons_input, 1, 1) consumption_group.setLayout(consumption_layout) layout.addWidget(consumption_group) # Calculate Button calc_btn = QPushButton('CALCULATE FUEL NEEDED') calc_btn.clicked.connect(self.calculate_fuel) calc_btn.setStyleSheet( 'QPushButton { background-color: #FF9800; color: white; ' 'padding: 15px; font-size: 16px; font-weight: bold; ' 'margin-top: 20px; }' 'QPushButton:hover { background-color: #e68900; }' ) layout.addWidget(calc_btn) layout.addStretch() widget.setLayout(layout) return widget def create_results_section(self): """Create the results section""" widget = QWidget() layout = QVBoxLayout() # Results Display results_group = QGroupBox('Fuel Consumption Analysis') results_layout = QVBoxLayout() self.results_text = QTextEdit() self.results_text.setReadOnly(True) self.results_text.setStyleSheet( 'QTextEdit { font-family: Consolas, monospace; font-size: 11px; ' 'background-color: white; }' ) self.results_text.setMinimumHeight(400) results_layout.addWidget(self.results_text) results_group.setLayout(results_layout) layout.addWidget(results_group) # Conversion Table conversion_group = QGroupBox('Fuel Density Conversion') conversion_layout = QVBoxLayout() self.conversion_table = QTableWidget() self.conversion_table.setRowCount(2) self.conversion_table.setColumnCount(3) self.conversion_table.setHorizontalHeaderLabels(['', 'L', 'KG']) self.conversion_table.setVerticalHeaderLabels(['LITER TO KG', 'KG TO LITER']) # Set default values self.conversion_table.setItem(0, 0, QTableWidgetItem('LITER TO KG')) self.conversion_table.setItem(0, 1, QTableWidgetItem('4')) self.conversion_table.setItem(0, 2, QTableWidgetItem(f'{4 * self.FUEL_DENSITY:.2f}')) self.conversion_table.setItem(1, 0, QTableWidgetItem('KG TO LITER')) self.conversion_table.setItem(1, 1, QTableWidgetItem('1')) self.conversion_table.setItem(1, 2, QTableWidgetItem(f'{1 / self.FUEL_DENSITY:.8f}')) self.conversion_table.setMaximumHeight(150) conversion_layout.addWidget(self.conversion_table) # Fuel density label density_label = QLabel(f'FUEL 1L = {self.FUEL_DENSITY} Kg') density_label.setAlignment(Qt.AlignCenter) density_label.setStyleSheet('font-weight: bold; padding: 10px; background-color: #f0f0f0;') conversion_layout.addWidget(density_label) conversion_group.setLayout(conversion_layout) layout.addWidget(conversion_group) widget.setLayout(layout) return widget def calculate_fuel(self): """Calculate fuel needed for the session""" try: # Get inputs session_duration = self.session_duration.value() # minutes avg_laptime = self.avg_laptime.value() # seconds added_laps = self.added_laps.value() mandatory_fuel_kg = self.mandatory_fuel.value() # kg warm_up_kg = self.warm_up.value() # kg margin_kg = self.margin.value() # kg # Get consumption data laps_completed = self.laps_input.value() fuel_consumed_L = self.fuel_cons_input.value() # litres # Calculate consumption per lap lap_avg_L = fuel_consumed_L / laps_completed # litres per lap lap_avg_kg = lap_avg_L * self.FUEL_DENSITY # kg per lap # Calculate possible laps in session session_duration_sec = session_duration * 60 possible_laps = int(session_duration_sec / avg_laptime) # Calculate added laps consumption added_laps_consumption = added_laps * lap_avg_kg # Calculate total laps including added total_laps = possible_laps + added_laps # Calculate mandatory fuel components mandatory_total_kg = mandatory_fuel_kg + warm_up_kg + margin_kg # Calculate fuel needed for flying laps # OUT/IN laps use 85% of normal consumption out_in_factor = 0.85 out_in_consumption_L = (lap_avg_L * out_in_factor) * 2 # 2 laps (out + in) out_in_consumption_kg = out_in_consumption_L * self.FUEL_DENSITY # Calculate flying lap average flying_laps = laps_completed - 2 # Exclude out and in laps if flying_laps > 0: flying_lap_avg_L = (fuel_consumed_L - out_in_consumption_L) / flying_laps flying_lap_avg_kg = flying_lap_avg_L * self.FUEL_DENSITY else: flying_lap_avg_L = lap_avg_L flying_lap_avg_kg = lap_avg_kg # Calculate average consumption per lap for session avg_cons_kg = (total_laps * flying_lap_avg_kg) / total_laps if total_laps > 0 else 0 avg_cons_L = avg_cons_kg / self.FUEL_DENSITY # Calculate fuel needed for the session # Base fuel = flying laps * flying lap average flying_laps_session = possible_laps base_fuel_kg = flying_laps_session * flying_lap_avg_kg # Total fuel needed fuel_needed_base_kg = base_fuel_kg + mandatory_total_kg fuel_needed_base_L = fuel_needed_base_kg / self.FUEL_DENSITY # Fuel needed with margins fuel_needed_5_kg = fuel_needed_base_kg * 1.05 fuel_needed_5_L = fuel_needed_5_kg / self.FUEL_DENSITY fuel_needed_10_kg = fuel_needed_base_kg * 1.10 fuel_needed_10_L = fuel_needed_10_kg / self.FUEL_DENSITY # Generate results display results = f""" ╔══════════════════════════════════════════════════════════════════╗ ║ FUEL CONSUMPTION CALCULATION RESULTS ║ ╚══════════════════════════════════════════════════════════════════╝ SESSION PARAMETERS: Session Duration: {session_duration} minutes Average Laptime: {avg_laptime:.1f} seconds Added Laps (OUT/IN): {added_laps} Possible Laps: {possible_laps} ═══════════════════════════════════════════════════════════════════ FLYING LAP DATA (RACE PACE CONSUMPTION): Odometer Before: {odo_before:.1f} km Odometer After: {odo_after:.1f} km Distance Covered: {distance_covered:.1f} km Fuel Before: {fuel_before:.1f} L Fuel After: {fuel_after:.1f} L Fuel Consumed: {fuel_consumed_L:.2f} L Laps Completed: {laps_completed} Flying Lap Avg: {flying_lap_avg_L:.2f} L/lap = {flying_lap_avg_kg:.2f} kg/lap (Race Pace Consumption) ═══════════════════════════════════════════════════════════════════ OUTLAP/INLAP CONSUMPTION (70% of Flying Lap): Outlap/Inlap Avg: {out_in_lap_L:.2f} L/lap = {out_in_lap_kg:.2f} kg/lap (70% of race pace) ═══════════════════════════════════════════════════════════════════ NON-RACE PACE FUEL (Outlap/Inlap + Reserves): Mandatory Fuel: {mandatory_fuel_kg:.1f} kg Warm Up: {warm_up_kg:.1f} kg Red/Yellow Reserve: {red_yellow_kg:.1f} kg ───────────────────────────────────────── Total Non-Race: {non_race_pace_kg:.2f} kg ({non_race_pace_kg/self.FUEL_DENSITY:.2f} L) (Includes outlap/inlap reserves) ═══════════════════════════════════════════════════════════════════ FUEL NEEDED FOR {possible_laps} LAPS SESSION: Race Pace Fuel: {race_pace_fuel_kg:.2f} kg ({race_pace_fuel_kg/self.FUEL_DENSITY:.2f} L) ({possible_laps} laps × {flying_lap_avg_kg:.2f} kg/lap) + Outlap/Inlap: {outlap_inlap_fuel_kg:.2f} kg ({outlap_inlap_fuel_kg/self.FUEL_DENSITY:.2f} L) (2 laps × {out_in_lap_kg:.2f} kg/lap) + Non-Race Reserves: {non_race_pace_kg:.2f} kg ({non_race_pace_kg/self.FUEL_DENSITY:.2f} L) ─────────────────────────────────────────────────────────── Total Base: {fuel_needed_base_kg:.2f} kg ({fuel_needed_base_L:.2f} L) With Safety Margins: Base + 5%: {fuel_needed_5_kg:.2f} kg ({fuel_needed_5_L:.2f} L) Base + 10%: {fuel_needed_10_kg:.2f} kg ({fuel_needed_10_L:.2f} L) ═══════════════════════════════════════════════════════════════════ RECOMMENDED FUEL TO ADD: → Standard: {fuel_needed_base_L:.2f} L ({fuel_needed_base_kg:.2f} kg) → Conservative: {fuel_needed_5_L:.2f} L ({fuel_needed_5_kg:.2f} kg) [+5%] → Safe: {fuel_needed_10_L:.2f} L ({fuel_needed_10_kg:.2f} kg) [+10%] ═══════════════════════════════════════════════════════════════════ Fuel Density: 1 Litre = {self.FUEL_DENSITY:.3f} kg Calculation Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} """ self.results_text.setText(results) self.statusBar().showMessage(f'Calculation complete - Fuel needed: {fuel_needed_base_L:.2f} L ({fuel_needed_base_kg:.2f} kg)') except Exception as e: QMessageBox.critical(self, 'Calculation Error', f'Error calculating fuel: {str(e)}') def main(): """Main application entry point""" app = QApplication(sys.argv) app.setStyle('Fusion') window = FuelCalculator() window.show() sys.exit(app.exec_()) if __name__ == '__main__': main()
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Tyre Pressure">
+    <title>Tyre Pressure Calculator - RGB Racing UMA</title>
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%234CAF50' width='100' height='100'/><text y='70' x='50' text-anchor='middle' font-size='60' fill='white' font-family='Arial'>TP</text></svg>">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .subtitle {
+            font-size: 14px;
+            color: #666;
+        }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #555;
+            margin-bottom: 8px;
+        }
+        input, select {
+            width: 100%;
+            padding: 12px 15px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            background: #f8f9fa;
+            transition: all 0.3s;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+        }
+        .btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 10px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+        }
+        .results {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .pressure-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .pressure-card {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .pressure-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .pressure-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #4CAF50;
+        }
+        .pressure-unit {
+            font-size: 14px;
+            color: #999;
+        }
+        .car-viz {
+            position: relative;
+            width: 200px;
+            height: 300px;
+            margin: 20px auto;
+            background: #333;
+            border-radius: 40px 40px 20px 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .tyre {
+            position: absolute;
+            width: 40px;
+            height: 60px;
+            background: #000;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            color: white;
+        }
+        .tyre-fl { left: -20px; top: 40px; }
+        .tyre-fr { right: -20px; top: 40px; }
+        .tyre-rl { left: -20px; bottom: 40px; }
+        .tyre-rr { right: -20px; bottom: 40px; }
+        .tab-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tab-btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            background: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .tab-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #555;
+            margin-top: 10px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏁 Tyre Pressure Calculator</h1>
+            <div class="subtitle">RGB Racing UMA • v4.6 PWA</div>
+        </div>
+        <div class="tab-nav">
+            <button class="tab-btn active" onclick="showTab('setup')">Setup</button>
+            <button class="tab-btn" onclick="showTab('calculate')">Calculate</button>
+            <button class="tab-btn" onclick="showTab('adjust')">Adjust</button>
+            <button class="tab-btn" onclick="showTab('hot')">Hot Analysis</button>
+        </div>
+        <!-- Setup Tab -->
+        <div id="tab-setup" class="tab-content active">
+            <div class="card">
+                <div class="section-title">🏎️ Car Model</div>
+                <div class="form-group">
+                    <label>Select Porsche Model</label>
+                    <select id="carModel">
+                        <option value="991">Porsche 991 GT3 Cup</option>
+                        <option value="992">Porsche 992 GT3 Cup</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card">
+                <div class="section-title">🛣️ Track Type</div>
+                <div class="form-group">
+                    <label>Track Characteristic</label>
+                    <select id="trackType">
+                        <option value="right">Right-Hander Track</option>
+                        <option value="left" selected>Left-Hander Track</option>
+                        <option value="neutral">Neutral/Balanced</option>
+                    </select>
+                </div>
+                <div class="info-box">
+                    Calibrated: FL=1.27, FR=1.29, RL=1.19, RR=1.23 bar
+                </div>
+            </div>
+            <div class="card">
+                <div class="section-title">⏱️ Session Duration</div>
+                <div class="form-group">
+                    <label>Session Type</label>
+                    <select id="sessionType">
+                        <option value="0.07">Qualifying (1-3 laps) +0.07</option>
+                        <option value="0.04" selected>Short Practice (5-8) +0.04</option>
+                        <option value="0.02">Medium Practice (10-15) +0.02</option>
+                        <option value="0.00">Race (20+) 0.00</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <!-- Calculate Tab -->
+        <div id="tab-calculate" class="tab-content">
+            <div class="card">
+                <div class="section-title">📊 Morning Setup</div>
+                <div class="form-group">
+                    <label>Baseline Pressure (bar)</label>
+                    <input type="number" id="baselinePressure" value="1.245" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Ambient Temperature (°C)</label>
+                    <input type="number" id="ambientTemp" value="12" step="1">
+                </div>
+                <div class="form-group">
+                    <label>Track Temperature (°C)</label>
+                    <input type="number" id="trackTemp" value="24" step="1">
+                </div>
+                <button class="btn btn-primary" onclick="calculateColdPressures()">Calculate Cold Pressures</button>  
+                <div id="results" class="results hidden">
+                    <div class="pressure-grid">
+                        <div class="pressure-card">
+                            <div class="pressure-label">FL</div>
+                            <div class="pressure-value" id="result-fl">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                        <div class="pressure-card">
+                            <div class="pressure-label">FR</div>
+                            <div class="pressure-value" id="result-fr">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                        <div class="pressure-card">
+                            <div class="pressure-label">RL</div>
+                            <div class="pressure-value" id="result-rl">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                        <div class="pressure-card">
+                            <div class="pressure-label">RR</div>
+                            <div class="pressure-value" id="result-rr">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                    </div>
+                    <div class="car-viz">
+                        <div class="tyre tyre-fl" id="viz-fl">FL</div>
+                        <div class="tyre tyre-fr" id="viz-fr">FR</div>
+                        <div class="tyre tyre-rl" id="viz-rl">RL</div>
+                        <div class="tyre tyre-rr" id="viz-rr">RR</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Adjust Tab -->
+        <div id="tab-adjust" class="tab-content">
+            <div class="card">
+                <div class="section-title">🌡️ Temperature Adjustment</div>
+                <div class="form-group">
+                    <label>Current FL (bar)</label>
+                    <input type="number" id="current-fl" value="1.27" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Current FR (bar)</label>
+                    <input type="number" id="current-fr" value="1.29" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Current RL (bar)</label>
+                    <input type="number" id="current-rl" value="1.19" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Current RR (bar)</label>
+                    <input type="number" id="current-rr" value="1.23" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Previous Ambient (°C)</label>
+                    <input type="number" id="prev-ambient" value="12" step="1">
+                </div>
+                <div class="form-group">
+                    <label>Previous Track (°C)</label>
+                    <input type="number" id="prev-track" value="24" step="1">
+                </div>
+                <div class="form-group">
+                    <label>New Ambient (°C)</label>
+                    <input type="number" id="new-ambient" value="12" step="1">
+                </div>
+                <div class="form-group">
+                    <label>New Track (°C)</label>
+                    <input type="number" id="new-track" value="28" step="1">
+                </div>
+                <button class="btn btn-success" onclick="calculateAdjustment()">Calculate Adjustment</button>  
+                <div id="adjust-results" class="results hidden">
+                    <div class="pressure-grid">
+                        <div class="pressure-card">
+                            <div class="pressure-label">FL New</div>
+                            <div class="pressure-value" id="adjust-fl">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                        <div class="pressure-card">
+                            <div class="pressure-label">FR New</div>
+                            <div class="pressure-value" id="adjust-fr">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                        <div class="pressure-card">
+                            <div class="pressure-label">RL New</div>
+                            <div class="pressure-value" id="adjust-rl">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                        <div class="pressure-card">
+                            <div class="pressure-label">RR New</div>
+                            <div class="pressure-value" id="adjust-rr">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Hot Analysis Tab -->
+        <div id="tab-hot" class="tab-content">
+            <div class="card">
+                <div class="section-title">🔥 Hot Pressure Analysis</div>
+                <div class="form-group">
+                    <label>Cold FL SET (bar)</label>
+                    <input type="number" id="cold-fl" value="1.27" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Cold FR SET (bar)</label>
+                    <input type="number" id="cold-fr" value="1.29" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Cold RL SET (bar)</label>
+                    <input type="number" id="cold-rl" value="1.19" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Cold RR SET (bar)</label>
+                    <input type="number" id="cold-rr" value="1.23" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Target Hot Pressure (bar)</label>
+                    <input type="number" id="target-hot" value="1.80" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Measured Hot FL (bar)</label>
+                    <input type="number" id="hot-fl" value="1.87" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Measured Hot FR (bar)</label>
+                    <input type="number" id="hot-fr" value="1.93" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Measured Hot RL (bar)</label>
+                    <input type="number" id="hot-rl" value="1.85" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Measured Hot RR (bar)</label>
+                    <input type="number" id="hot-rr" value="1.86" step="0.01">
+                </div>
+                <button class="btn btn-primary" onclick="analyzeHot()">Analyze & Calculate New Cold</button>  
+                <div id="hot-results" class="results hidden">
+                    <div class="pressure-grid">
+                        <div class="pressure-card">
+                            <div class="pressure-label">FL New Cold</div>
+                            <div class="pressure-value" id="new-cold-fl">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                        <div class="pressure-card">
+                            <div class="pressure-label">FR New Cold</div>
+                            <div class="pressure-value" id="new-cold-fr">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                        <div class="pressure-card">
+                            <div class="pressure-label">RL New Cold</div>
+                            <div class="pressure-value" id="new-cold-rl">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                        <div class="pressure-card">
+                            <div class="pressure-label">RR New Cold</div>
+                            <div class="pressure-value" id="new-cold-rr">-</div>
+                            <div class="pressure-unit">bar</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Constants
+        const T_REF_K = 293.15;
+        const REF_COLD = 0.05;
+        const REF_HOT = 0.08;
+        const TEMP_CORRECTION = [
+            [-10, 0.30], [-8, 0.25], [-5, 0.15], [-3, 0.10], [-1, 0.03],
+            [0, 0.00], [1, -0.03], [3, -0.03], [5, -0.05], [8, -0.08],
+            [10, -0.10], [13, -0.13], [15, -0.15], [18, -0.18], [20, -0.20],
+            [25, -0.25], [30, -0.30]
+        ];
+        const OFFSETS = {
+            frontToRear: 0.07,
+            frontLR: 0.01,
+            rearLR: 0.02
+        };
+        function showTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            event.target.classList.add('active');
+        }
+        function interpolate(x, xs, ys) {
+            for (let i = 0; i < xs.length - 1; i++) {
+                if (x >= xs[i] && x <= xs[i + 1]) {
+                    const t = (x - xs[i]) / (xs[i + 1] - xs[i]);
+                    return ys[i] + t * (ys[i + 1] - ys[i]);
+                }
+            }
+            return x < xs[0] ? ys[0] : ys[ys.length - 1];
+        }
+        function calculatePressureDistribution(pBase) {
+            const pFront = pBase + 0.035;
+            const pRear = pBase - 0.035;   
+            const trackType = document.getElementById('trackType').value;
+            let fl, fr, rl, rr;
+            if (trackType === 'right') {
+                fl = pFront - OFFSETS.frontLR;
+                fr = pFront + OFFSETS.frontLR;
+                rl = pRear - OFFSETS.rearLR;
+                rr = pRear + OFFSETS.rearLR;
+            } else if (trackType === 'left') {
+                fl = pFront - OFFSETS.frontLR;
+                fr = pFront + OFFSETS.frontLR;
+                rl = pRear - OFFSETS.rearLR;
+                rr = pRear + OFFSETS.rearLR;
+            } else {
+                fl = fr = pFront;
+                rl = rr = pRear;
+            }
+            return [fl, fr, rl, rr];
+        }
+        function calculateColdPressures() {
+            const pRef = parseFloat(document.getElementById('baselinePressure').value);
+            const tAmbient = parseFloat(document.getElementById('ambientTemp').value);
+            const tTrack = parseFloat(document.getElementById('trackTemp').value);   
+            const tAmbientK = tAmbient + 273.15;
+            const baseRatio = tAmbientK / T_REF_K;
+            const pBase = pRef * baseRatio;
+            const pDistributed = calculatePressureDistribution(pBase);
+            const deltaT = tTrack - tAmbient;
+            const xs = TEMP_CORRECTION.map(row => row[0]);
+            const ys = TEMP_CORRECTION.map(row => row[1]);
+            const correction = interpolate(deltaT, xs, ys);
+            const sessionAdjust = parseFloat(document.getElementById('sessionType').value);
+            const pColdFinal = pDistributed.map(p => (p + correction + sessionAdjust).toFixed(2));
+            document.getElementById('result-fl').textContent = pColdFinal[0];
+            document.getElementById('result-fr').textContent = pColdFinal[1];
+            document.getElementById('result-rl').textContent = pColdFinal[2];
+            document.getElementById('result-rr').textContent = pColdFinal[3];
+            document.getElementById('viz-fl').textContent = pColdFinal[0];
+            document.getElementById('viz-fr').textContent = pColdFinal[1];
+            document.getElementById('viz-rl').textContent = pColdFinal[2];
+            document.getElementById('viz-rr').textContent = pColdFinal[3];
+            document.getElementById('results').classList.remove('hidden');
+        }
+        function calculateAdjustment() {
+            const pCurrent = [
+                parseFloat(document.getElementById('current-fl').value),
+                parseFloat(document.getElementById('current-fr').value),
+                parseFloat(document.getElementById('current-rl').value),
+                parseFloat(document.getElementById('current-rr').value)
+            ];   
+            const tAmbOld = parseFloat(document.getElementById('prev-ambient').value);
+            const tTrkOld = parseFloat(document.getElementById('prev-track').value);
+            const tAmbNew = parseFloat(document.getElementById('new-ambient').value);
+            const tTrkNew = parseFloat(document.getElementById('new-track').value);
+            const deltaTOld = tTrkOld - tAmbOld;
+            const deltaTNew = tTrkNew - tAmbNew;
+            const xs = TEMP_CORRECTION.map(row => row[0]);
+            const ys = TEMP_CORRECTION.map(row => row[1]);
+            const corrOld = interpolate(deltaTOld, xs, ys);
+            const corrNew = interpolate(deltaTNew, xs, ys);
+            const corrChange = corrNew - corrOld;
+            const pAdjusted = pCurrent.map(p => (p + corrChange).toFixed(2));
+            document.getElementById('adjust-fl').textContent = pAdjusted[0];
+            document.getElementById('adjust-fr').textContent = pAdjusted[1];
+            document.getElementById('adjust-rl').textContent = pAdjusted[2];
+            document.getElementById('adjust-rr').textContent = pAdjusted[3];
+            document.getElementById('adjust-results').classList.remove('hidden');
+        }
+        function analyzeHot() {
+            const pColdSet = [
+                parseFloat(document.getElementById('cold-fl').value),
+                parseFloat(document.getElementById('cold-fr').value),
+                parseFloat(document.getElementById('cold-rl').value),
+                parseFloat(document.getElementById('cold-rr').value)
+            ];   
+            const pHotMeasured = [
+                parseFloat(document.getElementById('hot-fl').value),
+                parseFloat(document.getElementById('hot-fr').value),
+                parseFloat(document.getElementById('hot-rl').value),
+                parseFloat(document.getElementById('hot-rr').value)
+            ];
+            const targetHot = parseFloat(document.getElementById('target-hot').value);
+            const bleed = pHotMeasured.map(p => p - targetHot);
+            const bleedScaled = bleed.map(b => (REF_COLD * b) / REF_HOT);
+            const pColdNew = pColdSet.map((p, i) => (p - bleedScaled[i]).toFixed(2));
+            document.getElementById('new-cold-fl').textContent = pColdNew[0];
+            document.getElementById('new-cold-fr').textContent = pColdNew[1];
+            document.getElementById('new-cold-rl').textContent = pColdNew[2];
+            document.getElementById('new-cold-rr').textContent = pColdNew[3];
+            document.getElementById('hot-results').classList.remove('hidden');
+        }
+        // Install prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+        });
+    </script>
+</body>
+</html>
